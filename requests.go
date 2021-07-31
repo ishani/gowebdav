@@ -1,9 +1,9 @@
 package gowebdav
 
 import (
-	"bytes"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"net/http"
 	"path"
 	"strings"
@@ -12,8 +12,17 @@ import (
 func (c *Client) req(method, path string, body io.Reader, intercept func(*http.Request)) (req *http.Response, err error) {
 	// Tee the body, because if authorization fails we will need to read from it again.
 	var r *http.Request
-	var ba bytes.Buffer
-	bb := io.TeeReader(body, &ba)
+
+	// HACK using the TeeReader was causing weird issues where ReadDir would pull inconsistent results
+	// 		from a server; not sure why, but this fixes it
+	bodyString := ""
+	if body != nil {
+		bodyBytes, _ := ioutil.ReadAll(body)
+		bodyString = string(bodyBytes)
+	}
+	bb := strings.NewReader(bodyString)
+	//	var ba bytes.Buffer
+	//	bb := io.TeeReader(body, &ba)
 
 	if body == nil {
 		r, err = http.NewRequest(method, PathEscape(Join(c.root, path)), nil)
@@ -70,7 +79,7 @@ func (c *Client) req(method, path string, body io.Reader, intercept func(*http.R
 		if body == nil {
 			return c.req(method, path, nil, intercept)
 		} else {
-			return c.req(method, path, &ba, intercept)
+			return c.req(method, path, strings.NewReader(bodyString), intercept)
 		}
 
 	} else if rs.StatusCode == 401 {
